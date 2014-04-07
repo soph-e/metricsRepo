@@ -1,0 +1,39 @@
+/* !!!
+* {
+    margin: 0;
+    padding: 0;
+}
+*/
+.wrapper {
+    padding-left: 1em;
+}
+
+.header {
+    padding-left: 1em;
+}
+
+body {
+    font: 14px Helvetica;
+}
+
+#footpadding {
+    margin-bottom: 38px;
+}
+
+.footer {
+    position: fixed;
+    font-size:85%;
+    background-color: white;
+    padding-left: 1em;
+    width: 100%;
+    bottom: 0;
+}
+
+table.inlineTable {
+    border-collapse: collapse;
+    display: inline-block;            
+}
+
+.inlineTable td, th {
+    border: 1px solid black;
+}

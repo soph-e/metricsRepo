@@ -1,0 +1,560 @@
+# coding: utf8
+import random,os,urllib,time,gzip
+import numpy as np
+from PIL import Image, ImageDraw  # @UnresolvedImport
+#import PIL
+#import Image
+#import ImageDraw
+#import _imaging
+from Pycluster import kcluster
+#Pycluster is from here http://bonsai.hgc.jp/~mdehoon/software/cluster/software.htm
+#Doc for treecluster is on page 38 of http://bonsai.hgc.jp/~mdehoon/software/cluster/cluster.pdf
+
+
+#MAREK#
+import pprint
+#MAREK#
+
+
+dict_class = {"Open_water":'11',"Ice_snow":'12',"Open_space":'21',"Developed_low":'22',"Developed_medium":'23',"Developed_high":'24',
+              "Barren":'31',"Deciduous_forest":'41',"Evergreen_forest":'42',"Mixed_forest":'43',"Shrub":'52',
+              "Grassland":'71',"Pasture_hay":'81',"Cultivated_crops":'82',"Wetlands_woody":'90',"Wetlands_emergent_herbaceous":'95'}
+
+def index():
+        #Test if coming from metaland or only reloading the page
+    
+    #MAREK# 
+    pp = pprint.PrettyPrinter(indent=4)
+    #MAREK#
+    
+    temp_request=""
+
+#     temp_request=""
+#     try:
+#         if request.vars["land"] is not None:
+#             land_file = request.vars["land"]
+#             temp_request += "?land="+land_file
+#         if request.vars["class"] is not None:
+#             class_file = request.vars["class"]
+#             temp_request += "&class="+class_file
+#         if request.vars["dataset"] is not None :
+#             dataset = request.vars["dataset"]+"/"
+#             temp_request +="&dataset="+request.vars["dataset"]
+#             if dataset=="s2/": img_type="e1/c6/r1/"
+#             elif dataset=="s1/": img_type="e1/c1/r1/"
+#             elif dataset=="sf/":
+#                 response.flash = 'This dataset is currently unavailable'
+#                 session.load2 = False
+#     except KeyError:
+#         pass
+#     if session.request is not None and session.request!=temp_request:
+#         session.load2=False
+
+    #Loading the metrics and landscape's name
+    if not session.load2:
+        print "New session, time is :",time.asctime(time.localtime(time.time()))
+        session.request =""
+        session.load2 = True
+        session.debug=0
+
+    #    metrics_csv = open('applications/MetricsFinder/static/Metrics_final_rank.csv', 'r')
+
+        #Exemplars par defaut (selectionner via pca et affinity propagation sur les tiles
+       # session.exemplars = [3,10,29,70,183,202,211,272,290,313,379,393,394,462,541]
+
+
+        ip_path_file = open('applications/MetricsFinder/static/ip_path.txt','r')
+        ip = ip_path_file.readline().rstrip('\r\n')
+        path = ip_path_file.readline().rstrip('\r\n')
+
+        session.address = 'http://'+ip+'/'+path
+
+        ############
+        #A recuperer de metaland!!!
+    #    ld_class_csv = open('applications/MetricsFinder/static/landscapes_class_type2_e1_c6_r1_i1_2012_04_19_644.csv', 'r')
+   #     ld_land_csv = open('applications/MetricsFinder/static/landscapes_land_type2_e1_c6_r1_i1_2012_04_19_644.csv', 'r')
+
+   #Exemple d'appel :
+   #http://132.216.21.101:8080/MetricsFinder/port/index?land=landscapes_land_type2_e1_c6_r1_i1_2012_04_19_644.csv&class=landscapes_class_type2_e1_c6_r1_i1_2012_04_19_644.csv&dataset=e1/c6/r1/
+        class_file = "landscapes_class_type2_e1_c6_r1_i1_2012_04_19_644.csv"
+        land_file = "landscapes_land_type2_e1_c6_r1_i1_2012_04_19_644.csv"
+        img_type = "e1/c6/r1/"
+        csv_location = "../currentprojects/metrics/distribution/temp_csv/"
+        dataset= "s2/"
+        gzipped = False
+        try:
+
+            if request['vars']["land"] is not None:
+                gzipped = True
+                land_file = request['vars']["land"]
+                session.request += "?land="+land_file
+            if request['vars']["class"] is not None:
+                class_file = request['vars']["class"]
+                session.request += "&class="+class_file
+            if request['vars']["dataset"] is not None :
+                dataset = request['vars']["dataset"]+"/"
+                session.request +="&dataset="+request['vars']["dataset"]
+                if dataset=="s2/": img_type="e1/c6/r1/"
+                elif dataset=="s1/": img_type="e1/c1/r1/"
+                elif dataset=="sf/":
+                    response.flash = 'This dataset is currently unavailable'
+                    return dict(wrong_dataset=True,minimum_tiles=True)
+
+            csv_location ="/Library/WebServer/Documents/currentprojects/metrics/tmp/"
+        except KeyError:
+            pass
+        session.address += dataset
+     #   ld_class_csv = urllib.urlopen('http://132.216.21.101/currentprojects/metrics/distribution/temp_csv/'+class_file)
+     #   ld_land_csv = urllib.urlopen('http://132.216.21.101/currentprojects/metrics/distribution/temp_csv/'+land_file)
+
+        if gzipped:
+            ld_class_csv = gzip.open(csv_location+class_file)
+            ld_land_csv = gzip.open(csv_location+land_file)
+        else:
+            ld_class_csv = open(csv_location+class_file)
+            ld_land_csv = open(csv_location+land_file)
+
+
+        #########################
+
+        tiles = dict()
+        #Stocker les metrics de chaque paysage
+        
+        #MAREK#============================
+        #MAREK#     PARSE LANDSCAPE CSV
+        #MAREK#============================
+        
+        for i,line in enumerate(ld_land_csv.readlines()):
+            print "yo"
+            print line
+            line = line.rstrip('\r\n')
+            #SOPH# do not reassign variable
+            line = line.split(',')
+            #SOPH# what is 8 and why ;_;
+            if len(line)<8:
+                continue
+            if i==0:
+                #SOPH# initialize yo shit at top of function
+                land_header=line[7:] # pas de barren #SOPH# waht
+            else:   #SOPH# >8
+                name = line[0]+"-"+line[1] #col-row
+                tile = dict()
+                tile["col"]=line[0]
+                tile["row"]=line[1]
+                tile["index"]=i-1
+                #MAREK# tile = [ "col" => 162, "row" => 65, "index" => 0, "np" => 67, ...(ALL THE LAND METRICS)..., 11 => 0 ... (ALL THE CLASS TYPES)]
+
+                for j,s in enumerate(land_header):
+                    tile[s] = float(line[7+j])
+
+                #Initialisation de toutes les classes a 0
+                for c in dict_class:
+                    tile[dict_class[c]] = 0
+
+                tiles[name] = tile
+
+
+        #Exemplars par defaut (selectionner via pca et affinity propagation sur les tiles
+        if len(tiles)==685:
+            #MAREK# ASSUME default set
+            isDefaultSet = True
+            print "isDefaultSet %s" % isDefaultSet
+            session.exemplars = [116,132,149,172,234,313,339,379,416,433,438,564,619,654,680]
+        else:
+            isDefaultSet = False
+            print "isDefaultSet %s" % isDefaultSet
+            try:
+                session.exemplars = random.sample(xrange(len(tiles)),15)
+            except ValueError:
+                return dict(wrong_dataset=False,minimum_tiles=False)
+        
+        #MAREK#============================
+        #MAREK#     PARSE CLASS CSV
+        #MAREK#============================
+            
+        #Stocker le pourcentage de chaque classe pour chaque paysage
+        for i,line in enumerate(ld_class_csv.readlines()):
+            line = line.rstrip('\r\n')
+            line = line.split(',')
+            if len(line)<5:
+                continue
+            if i==0:
+                continue
+            else:
+                name = line[0]+"-"+line[1] #col-row
+                class_type = line[2]
+                tiles[name][class_type] = float(line[4])
+                
+        session.metrics_wanted = ['np','pd','lpi','te','ed','lsi','area_mn','shape_mn','frac_mn','frac_sd','para_mn','contig_mn',
+                          'tca','core_mn','core_am','contag','pladj','iji','mesh','pr','shei']
+                
+        session.class_wanted = ["Open_water","Developed_low","Developed_medium","Developed_high","Deciduous_forest","Evergreen_forest",
+                            "Mixed_forest","Shrub","Grassland","Pasture_hay","Cultivated_crops","Wetlands_woody","Wetlands_emergent_herbaceous"]
+
+        session.header = session.class_wanted+session.metrics_wanted
+
+        metrics_pre = ["test" for i in tiles]
+
+        session.list_img = ["test" for i in tiles]
+        session.list_name = ["test" for i in tiles]
+
+    #On choisit des exemplars au hasards si le dataset n'est pas celui par defaut (avec 686 paysages)
+        if len(tiles)!=685:
+            print "isDefaultSet %s" % isDefaultSet
+            try:
+                session.exemplars = random.sample(xrange(len(tiles)),15)
+            except ValueError:
+                return dict(message="You need to have at least 15 tiles")
+            if len(tiles) > 685:
+                print "len(tiles): %s" % len(tiles)
+                #return dict(wrong_dataset=False,bad_dataset=True,minimum_tiles=True)
+                #clear cache if error persists after code is edited & recompiled
+                
+         
+        for key in tiles:
+            tiles[key]
+            row = []
+            for c in session.class_wanted:
+                row.append(tiles[key][dict_class[c]])
+            for m in session.metrics_wanted:
+                row.append(tiles[key][m])
+
+            metrics_pre[tiles[key]["index"]] = row
+            png_name = img_type+"row"+tiles[key]["row"]+"/"+"x"+tiles[key]["col"]+"y"+tiles[key]["row"]+dataset[0:2]+".png"
+            
+            session.list_name[tiles[key]["index"]] = key
+            session.list_img[tiles[key]["index"]] = png_name
+
+        metrics_pre = np.array(metrics_pre)
+
+        #Normalisation par le rang : val devient le rang/nombre de tile
+        session.metrics = np.empty(metrics_pre.shape,float)
+        for i in xrange(len(metrics_pre[0])):
+            metric = np.array(metrics_pre[:,i])
+            temp = metric.argsort()
+            ranks = np.empty(len(metric), int)
+            ranks[temp] = np.arange(len(metric))
+            session.metrics[:,i]=ranks/float(len(ranks))
+
+
+        #Probabilite a priori si on veut que l'ensemble des proba somme a 1
+        #session.metrics_prob = np.ones((len(session.header)))*1.0/len(session.header)
+
+        #Si chaque metrique est independante des autres, on pose seulement la proba a 0.5
+        session.metrics_prob = np.ones((len(session.header)))*0.5
+        session.best_metrics = [-1,-1,-1,-1,-1,-1]
+
+
+    img_index = random.sample(xrange(len(session.list_img)),3)
+    img1 = img_index[0]
+    img2 = img_index[1]
+    img3 = img_index[2]
+    cluster_table = cluster(1)
+    US_img,US_ratio = clusterAndDrawUS(None)
+
+    message="Welcome!"
+    form=SQLFORM.factory(
+                        Field('img1','boolean'),
+                        Field('img2','boolean'),
+                        Field('img3','boolean'),
+                        hidden=dict(imgs=str(img1)+","+str(img2)+","+str(img3)))
+
+    skip=FORM(INPUT(_type="submit",_value="Skip"))
+
+    forget=FORM(INPUT(_type="submit",_value="Reset"))
+
+    if forget.process(formname='forget').accepted:
+        redirect(URL('forget'))
+
+    if form.process(formname='form').accepted:
+        form.vars.imgs = request['vars'].imgs
+        pimg1,pimg2,pimg3 = form.vars.imgs.split(',')
+        pimg1,pimg2,pimg3 = int(pimg1),int(pimg2),int(pimg3)
+
+        cond_prob = calculateConditional(pimg1,pimg2,pimg3)
+        session.cond_prob = np.array(cond_prob[:,2:4])
+        if form.vars.img1+form.vars.img2+form.vars.img3!=2:
+            response.flash = 'Choose exactly 2 landscapes on 3'
+            table_class,table_ld_metrics = getMetricsTable(session.metrics_prob)
+            return dict(message=message,form=form,skip=skip,forget=forget,img1=session.list_img[img1],
+                        img2=session.list_img[img2],img3=session.list_img[img3],cluster_table=cluster_table,
+                        table1=table_class,table2=table_ld_metrics,
+                        landscapes1=0,landscapes2=0,debug=session.debug,US_img=US_img,US_ratio=US_ratio,wrong_dataset=False,minimum_tiles=True)
+
+        response.flash = 'Thanks!'
+        session.debug +=1
+
+        if form.vars.img1 and form.vars.img2:
+            calculatePosterior(cond_prob[0])
+
+        if form.vars.img1 and form.vars.img3:
+            calculatePosterior(cond_prob[1])
+
+        if form.vars.img2 and form.vars.img3:
+            calculatePosterior(cond_prob[2])
+
+    elif form.errors:
+        response.flash = 'There were errors in the form'
+
+    else:
+        response.flash = 'Choose the 2 landscapes that are more similar with respect to your desired criteria'
+
+
+    table_class,table_ld_metrics = getMetricsTable(session.metrics_prob)
+    cluster_table = cluster(1)
+    US_img,US_ratio = clusterAndDrawUS(None)
+    
+    return dict(message=message,form=form,skip=skip,forget=forget,img1=session.list_img[img1],
+                img2=session.list_img[img2],img3=session.list_img[img3],cluster_table=cluster_table,
+                table1=table_class,table2=table_ld_metrics,landscapes1=0,landscapes2=0,debug=session.debug,US_img=US_img,US_ratio=US_ratio,wrong_dataset=False,minimum_tiles=True)
+
+def forget():
+
+    if request['vars'].confirm:
+        session.load2 = False
+        redirect(URL('index'+session.request))
+    elif request['vars'].back:
+        redirect(URL('index'))
+    else:
+        formyes = BUTTON('Yes',_onclick='document.location="%s"'%URL(vars=dict(confirm=True)))
+        formno = BUTTON('No',_onclick='document.location="%s"'%URL(vars=dict(back=True)))
+    return dict(formyes=formyes,formno=formno)
+
+def clusterAndDrawUS(unused):
+
+    #automatically delete temp US image older than 14 days
+    os.system("find applications/MetricsFinder/static/temp_US/US_clustered_* -mtime +14 -exec rm {} \;")
+
+
+    clusterid, error, nfound = kcluster(session.metrics[:][:,session.best_metrics],nclusters=2)
+
+    cluster0_val = None
+    cluster1_val = None
+
+    cluster0 = []
+    cluster1 = []
+
+    min_x = None
+    max_x = None
+    min_y = None
+    max_y = None
+
+    for i,cluster in enumerate(clusterid):
+        col,row = session.list_name[i].split('-')
+        x = int(col)-22
+        y = int(row)-4
+
+        if min_x is None:
+            min_x = x
+            max_x = x
+            min_y = y
+            max_y = y
+        min_x = min(x,min_x)
+        min_y = min(y,min_y)
+        max_x = max(x,max_x)
+        max_y = max(y,max_y)
+
+        if cluster==0:
+            cluster0.append((x,y))
+        else :
+            cluster1.append((x,y))
+
+    im = Image.open("applications/MetricsFinder/static/avl_lands_img.png")
+
+    draw = ImageDraw.Draw(im)
+    for coord in cluster0:
+        draw.ellipse([(coord[0]-1,coord[1]-1),(coord[0]+1,coord[1]+1)], fill="red")
+
+    for coord in cluster1:
+        draw.ellipse([(coord[0]-1,coord[1]-1),(coord[0]+1,coord[1]+1)], fill="blue")
+
+    del draw
+    img_name = "US_clustered_"+str(int(time.time()*10000))+".png"
+    # write to stdout
+
+    delta_x = max_x-min_x
+    delta_y = max_y-min_y
+    upper_left_x = max(0,min_x-delta_x/2)
+    upper_left_y = max(0,min_y-delta_y/2)
+    lower_right_x = min(im.size[0],max_x+delta_x/2)
+    lower_right_y = min(im.size[1],max_y+delta_y/2)
+    region = im.crop((upper_left_x,upper_left_y,lower_right_x,lower_right_y))
+    region.save("applications/MetricsFinder/static/temp_US/"+img_name, "PNG")
+
+    ratio = float(lower_right_x-upper_left_x)/(lower_right_y-upper_left_y)
+
+    return (img_name,ratio)
+
+
+def calculateConditional(pimg1,pimg2,pimg3):
+
+    landscapes1 = session.metrics[pimg1]
+    landscapes2 = session.metrics[pimg2]
+    landscapes3 = session.metrics[pimg3]
+
+    diff1_2 = np.sqrt((landscapes1-landscapes2)**2)
+    diff1_3 = np.sqrt((landscapes1-landscapes3)**2)
+    diff2_3 = np.sqrt((landscapes2-landscapes3)**2)
+
+    prop1_2 = 1 - diff1_2
+    prop1_3 = 1 - diff1_3
+    prop2_3 = 1 - diff2_3
+
+    total = prop1_2+prop1_3+prop2_3
+
+    conditional1_2 = prop1_2/total
+    conditional1_3 = prop1_3/total
+    conditional2_3 = prop2_3/total
+
+    cond_prob = np.vstack((conditional1_2,conditional1_3,conditional2_3))
+
+    return cond_prob
+
+def calculatePosterior(cond_prob):
+    #si l'utilisateur a choisit AB, cond_prob est de la forme : [P(AB|M1),P(AB|M2),...]
+    #session.metrics_prob : [P(M1),P(M2),...]
+
+    #On calcul total_prob de la facon suivante si on veut que les probabilites de toutes le metriques somme a 1
+    #total_prob = sum(cond_prob*session.metrics_prob)
+
+    #Sinon la total_prob est different pour chaque metrique et est egal a :
+    # cond_prob[i]*session.metrics_prob[i]+(1/3)*(1-session.metrics_prob[i])
+    # Cela a pour effet de rendre chaque hypothese (metrique) independante. On effectue un test pour chaque metrique.
+    #Ce test a deux hypotheses : soit la metrique en question est bonne soit elle ne l'est pas.
+    #Le 1/3 provient du fait que la proba conditionnel de choisir une paire est 1/3 si la metrique n'apporte pas d'information.
+
+    for i in xrange(len(session.metrics_prob)):
+        total_prob_i = cond_prob[i]*session.metrics_prob[i]+1/3.0*(1-session.metrics_prob[i])
+        session.metrics_prob[i] = min(0.95,max(cond_prob[i]*session.metrics_prob[i]/total_prob_i,0.05))
+    return
+
+def cluster(top):
+
+    session.exemplars_val = session.metrics[session.exemplars][:,session.best_metrics]
+
+    list_exemp = []
+    for i in session.exemplars:
+        list_exemp.append(session.list_img[i])
+
+ #   if True or session.best_metrics[0]==-1:
+  #      table = TABLE(TR(*[TD(IMG(_src=URL('static','thumbs/'+img),_alt=img)) for img in list_exemp]))
+
+    session.clusterid, error, nfound = kcluster(session.exemplars_val,nclusters=2)
+
+    cluster0_val = None
+    cluster1_val = None
+
+    cluster0 = []
+    cluster1 = []
+    for i,cluster in enumerate(session.clusterid):
+        if cluster==0:
+            cluster0.append(list_exemp[i])
+            if cluster0_val is None:
+                cluster0_val = session.exemplars_val[i]
+            else:
+                cluster0_val = np.vstack((cluster0_val,session.exemplars_val[i]))
+
+        else :
+            cluster1.append(list_exemp[i])
+            if cluster1_val is None:
+                cluster1_val = session.exemplars_val[i]
+            else:
+                cluster1_val = np.vstack((cluster1_val,session.exemplars_val[i]))
+
+    cluster0_avg = sum(cluster0_val)/len(cluster0_val)
+    cluster1_avg = sum(cluster1_val)/len(cluster1_val)
+    mse = (sum((cluster0_avg-cluster1_avg)**2)/6)**(.5)
+    table_avg  = TABLE(TR(TD("Cluster",_class="average_table_text"),*[TD(session.header[i],_class="average_table_text") for i in session.best_metrics]),
+                        TR(TD(1),*[TD(round(cluster0_avg[i],2)) for i in xrange(6)]),
+                        TR(TD(2),*[TD(round(cluster1_avg[i],2)) for i in xrange(6)]))
+
+    table_avg["_class"]="average_table"
+
+    cluster0_address = []
+    for img in cluster0:
+        cluster0_address.append(session.address+'thumbs/'+img)
+    while len(cluster0_address)<15:
+        cluster0_address.append(URL('static','thumbs/blank.png'))
+        cluster0.append("blank.png")
+    cluster1_address = []
+    for img in cluster1:
+        cluster1_address.append(session.address+'thumbs/'+img)
+    while len(cluster1_address)<15:
+        cluster1_address.append(URL('static','thumbs/blank.png'))
+        cluster1.append("blank.png")
+
+    table0 = TABLE(
+     TR(*[TD(IMG(_src=cluster0_address[i],_alt=cluster0[i])) for i in xrange(5)]),
+     TR(*[TD(IMG(_src=cluster0_address[i],_alt=cluster0[i])) for i in xrange(5,10)]),
+     TR(*[TD(IMG(_src=cluster0_address[i],_alt=cluster0[i])) for i in xrange(10,15)]))
+
+    table1 = TABLE(
+     TR(*[TD(IMG(_src=cluster1_address[i],_alt=cluster1[i])) for i in xrange(5)]),
+     TR(*[TD(IMG(_src=cluster1_address[i],_alt=cluster1[i])) for i in xrange(5,10)]),
+     TR(*[TD(IMG(_src=cluster1_address[i],_alt=cluster1[i])) for i in xrange(10,15)]))
+
+    return (table0,table1,table_avg,round(mse,3))
+
+
+def getMetricsTable(prob):
+
+    nb_of_class_metrics = len(session.class_wanted)
+
+    prob_class = prob[:nb_of_class_metrics]
+    prob_ld_metrics = prob[nb_of_class_metrics:]
+
+    # class table header
+    header_class = np.array(session.class_wanted)#np.array(session.header[:nb_of_class_metrics])
+    #landscape metrics table header
+    header_ld_metrics = np.array(session.metrics_wanted)#np.array(session.header[nb_of_class_metrics:])
+
+    order_class = np.argsort(prob[:nb_of_class_metrics])
+    order_ld_metrics = np.argsort(prob[nb_of_class_metrics:])
+
+    header_class = header_class[order_class]
+    header_ld_metrics = header_ld_metrics[order_ld_metrics]
+
+    probO_class = prob_class[order_class]
+    probO_ld_metrics = prob_ld_metrics[order_ld_metrics]
+
+    session.best_metrics=[order_class[-1],order_class[-2],order_class[-3],
+                          order_ld_metrics[-1]+nb_of_class_metrics,
+                          order_ld_metrics[-2]+nb_of_class_metrics,
+                          order_ld_metrics[-3]+nb_of_class_metrics]
+
+    legend = session.class_wanted
+
+    table_class = TABLE(TR(TD("Color"),TD(B("Class proportions")),TD(B("Score"))),
+                      TR(TD(IMG(_src=URL('static','legend/'+legend[order_class[-1]]+".png"),
+                          _width=40,_height=20,_alt=str(order_class[-1]))),
+                          TD(header_class[-1]),TD(int(round(probO_class[-1]*100,0))),_class="high_metrics"),
+                      TR(TD(IMG(_src=URL('static','legend/'+legend[order_class[-2]]+".png"),_width=40,_height=20,
+                          _alt=str(order_class[-2])+".png")),
+                          TD(header_class[-2]),TD(int(round(probO_class[-2]*100,0))),_class="high_metrics"),
+                      TR(TD(IMG(_src=URL('static','legend/'+legend[order_class[-3]]+".png"),_width=40,_height=20,
+                          _alt=header_class[-3]+".png")),
+                          TD(header_class[-3]),TD(int(round(probO_class[-3]*100,0))),_class="high_metrics"),
+                  *[
+                  TR(TD(IMG(_src=URL('static','legend/'+legend[order_class[-(i+4)]]+".png"),
+                      _width=40,_height=20,_alt=header_class[-(i+4)]+".png")),
+                     TD(header_class[-(i+4)]),
+                     TD(int(round(probO_class[-(i+4)]*100,0))))
+                     for i in xrange(len(order_class)-3)])
+
+    table_class["_class"]="metrics_table"
+
+    table_ld_metrics = TABLE(TR(TD(B("Landscape-level metrics")),TD(B("Score"))),
+                      TR(TD(header_ld_metrics[-1]),TD(int(round(probO_ld_metrics[-1]*100,0))),_class="high_metrics"),
+                      TR(TD(header_ld_metrics[-2]),TD(int(round(probO_ld_metrics[-2]*100,0))),_class="high_metrics"),
+                      TR(TD(header_ld_metrics[-3]),TD(int(round(probO_ld_metrics[-3]*100,0))),_class="high_metrics"),
+                  *[
+                  TR(TD(header_ld_metrics[-(i+4)]),
+                     TD(int(round(probO_ld_metrics[-(i+4)]*100,0))))
+                     for i in xrange(len(order_ld_metrics)-3)])
+
+    table_ld_metrics["_class"]="metrics_table"
+
+
+    return table_class,table_ld_metrics
+    
+index()    
