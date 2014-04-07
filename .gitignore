@@ -1,0 +1,8 @@
+#ignore object and archive files
+*.[oa]
+
+#ignore certain temp files (like Emacs)
+*~
+
+#ignore temporary smarty templates
+library/smarty_templates_c/
