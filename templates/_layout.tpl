@@ -22,7 +22,7 @@
         </div>
         <div class="footer">
             {*<p>Questions about the Metaland project? Read more about this research at the <a href="{$SISTER_URL}">{$SISTER_SITE}</a>, or contact <a href="{$ADMIN_CONTACT}">{$ADMIN}</a>.</p>*}
-            <p>Copyright © 2012, {$DEVELOPPER|default:""}, Laboratoire de Jeffrey Cardille, Université de Montréal.</p>
+            <p style='border-top: thin solid black'>Copyright © 2012, {$DEVELOPPER|default:""}, website developed in Jeffrey's Lab, McGill University</p>
         </div>
     </body>
     

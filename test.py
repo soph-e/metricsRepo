@@ -19,7 +19,41 @@ metrics_definition = ["number of patches","patch density","largest patch index",
 class_wanted = ["Open_water","Developed_low","Developed_medium","Developed_high","Deciduous_forest","Evergreen_forest",
 "Mixed_forest","Shrub","Grassland","Pasture_hay","Cultivated_crops","Wetlands_woody","Wetlands_emergent_herbaceous"]
 
+#print metrics_definition
+#print class_wanted
 
 
-print metrics_definition
-print class_wanted
+def index():
+    
+    print "New session, time is :",time.asctime(time.localtime(time.time()))
+    message=""
+    form=""
+    skip=False
+    forget=False
+
+    img1=0
+    img2=1
+    img3=2
+    
+    class Session:
+        def __init__(self):
+            self.load2 = True
+            self.request=""
+            self.debug=0
+            self.list_img="123"
+    session= Session()
+
+    cluster_table=""
+    table_class=""
+    table_ld_metrics=""
+    US_img=""
+    US_ratio=""
+
+
+    return dict(message=message,form=form,skip=skip,forget=forget,img1=session.list_img[img1],
+            img2=session.list_img[img2],img3=session.list_img[img3],cluster_table=cluster_table,
+            table1=table_class,table2=table_ld_metrics,landscapes1=0,landscapes2=0,debug=session.debug,US_img=US_img,US_ratio=US_ratio,wrong_dataset=False,minimum_tiles=True)
+
+
+
+print index()
